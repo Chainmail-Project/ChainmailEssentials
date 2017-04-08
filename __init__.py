@@ -19,6 +19,8 @@ class ChainmailEssentials(ChainmailPlugin):
         self.eval = self.wrapper.CommandRegistry.register_command("!eval", "^!eval (.+)$", "Evaluates Python expressions.", self.command_eval, True)
         self.eval_usage = self.wrapper.CommandRegistry.register_command("!eval", "^!eval$", "Displays the usage message.", self.command_eval_usage, True)
 
+        self.reload = self.wrapper.CommandRegistry.register_command("!reload", "^!reload$", "Reloads all plugins.", self.command_reload, True)
+
     def command_eval(self, event: CommandSentEvent):
         code = event.args[0]
         try:
@@ -62,4 +64,15 @@ class ChainmailEssentials(ChainmailPlugin):
                 builder.add_field("    Version: ", Colours.red)
                 builder.add_field(f"{plugin['manifest']['version']}{suffix}", Colours.blue)
 
+        event.player.send_message(builder)
+
+    def command_reload(self, event: CommandSentEvent):
+        builder = MessageBuilder(self.wrapper)
+        builder.add_field("Reloading all plugins...", Colours.blue)
+        event.player.send_message(builder)
+
+        self.wrapper.reload()
+
+        builder = MessageBuilder(self.wrapper)
+        builder.add_field("Plugins reloaded.", Colours.green)
         event.player.send_message(builder)
