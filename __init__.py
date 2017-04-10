@@ -1,13 +1,31 @@
 import traceback
+# noinspection PyPackageRequirements
+import requests
+from typing import TypeVar, List
 
-from Chainmail.Events import CommandSentEvent
+from Chainmail.Events import CommandSentEvent, PlayerConnectedEvent, Events
 from Chainmail.MessageBuilder import MessageBuilder, Colours
 from Chainmail.Plugin import ChainmailPlugin
+
+
+t = TypeVar("t")
 
 
 class ChainmailEssentials(ChainmailPlugin):
     def __init__(self, manifest: dict, wrapper: "Wrapper.Wrapper") -> None:
         super().__init__(manifest, wrapper)
+
+        self.remote_manifest_path = "https://raw.githubusercontent.com/Chainmail-Project/ChainmailEssentials/master/plugin.json"
+        self.needs_update = False
+        self.new_version = ""
+        self.check_for_update()
+        self.update_message = MessageBuilder()
+        self.update_message.add_field("A new version of ", Colours.gold)
+        self.update_message.add_field("Chainmail Essentials ", Colours.blue)
+        self.update_message.add_field("is available.\nYou are running version ", Colours.gold)
+        self.update_message.add_field(f"{self.manifest['version']}. ", Colours.blue)
+        self.update_message.add_field("Newest version is ", Colours.gold)
+        self.update_message.add_field(f"{self.new_version}.", Colours.blue)
 
         self.commands = self.wrapper.CommandRegistry.register_command("!commands", "^!commands$", "Lists commands accessible to a user.", self.command_commands)
         self.plugins = self.wrapper.CommandRegistry.register_command("!plugins", "^!plugins$", "Lists all loaded plugins.", self.command_plugins)
@@ -20,6 +38,31 @@ class ChainmailEssentials(ChainmailPlugin):
         self.eval_usage = self.wrapper.CommandRegistry.register_command("!eval", "^!eval$", "Displays the usage message.", self.command_eval_usage, True)
 
         self.reload = self.wrapper.CommandRegistry.register_command("!reload", "^!reload$", "Reloads all plugins.", self.command_reload, True)
+
+        self.wrapper.EventManager.register_handler(Events.PLAYER_CONNECTED, self.handle_connection)
+
+    @staticmethod
+    def get_item_from_list(parent_list: List[t], item_index: int, default: t) -> t:
+        try:
+            return parent_list[item_index]
+        except KeyError:
+            return default
+
+    def check_for_update(self):
+        self.logger.info("Checking for update...")
+        try:
+            manifest = requests.get(self.remote_manifest_path).json()
+            version_remote = manifest["version"].split(".")
+            version_local = self.manifest["version"].split(".")
+            for i in range(len(version_local)):
+                if int(version_local[i]) < int(self.get_item_from_list(version_remote, i, "0")):
+                    self.needs_update = True
+                    self.logger.info(f"An update is available. Current version is v{self.manifest['version']}, updated version is v{manifest['version']}.")
+                    self.new_version = manifest["version"]
+                    return
+            self.logger.info("No update required.")
+        except requests.HTTPError:
+            self.logger.warning("Failed to check for update.")
 
     def command_eval(self, event: CommandSentEvent):
         code = event.args[0]
@@ -76,3 +119,7 @@ class ChainmailEssentials(ChainmailPlugin):
         builder = MessageBuilder()
         builder.add_field("Plugins reloaded.", Colours.green)
         event.player.send_message(builder)
+
+    def handle_connection(self, event: PlayerConnectedEvent):
+        if event.player.is_op and self.needs_update:
+            event.player.send_message(self.update_message)
