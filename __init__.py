@@ -1,14 +1,75 @@
+import threading
 import traceback
 # noinspection PyPackageRequirements
 import requests
-from typing import TypeVar, List
+import time
+from typing import TypeVar, List, Optional
 
+from Chainmail.Player import Player
 from Chainmail.Events import CommandSentEvent, PlayerConnectedEvent, Events
 from Chainmail.MessageBuilder import MessageBuilder, Colours
 from Chainmail.Plugin import ChainmailPlugin
 
 
 t = TypeVar("t")
+
+
+class PendingTPA(object):
+
+    def __init__(self, creator: Player, recipient: Player):
+        self.created_at = time.time()
+        self.creator = creator  # type: Player
+        self.recipient = recipient  # type: Player
+        self.responded = False
+        self.notify_creation()
+
+    def notify_creation(self):
+        message = MessageBuilder()
+        message.add_field("You have been sent a teleport request by ", Colours.gold)
+        message.add_field(f"{self.creator.username}.\n", Colours.blue)
+        message.add_field("Use ", Colours.gold)
+        message.add_field("!tpaccept ", Colours.blue)
+        message.add_field("to accept the request, or ", Colours.gold)
+        message.add_field("!tpdeny ", Colours.blue)
+        message.add_field("to decline it.", Colours.gold)
+        self.recipient.send_message(message)
+
+        message = MessageBuilder()
+        message.add_field("Your request to ", Colours.gold)
+        message.add_field(f"{self.recipient.username} ", Colours.blue)
+        message.add_field("has been sent.", Colours.gold)
+        self.creator.send_message(message)
+
+    def do_teleport(self):
+        message = MessageBuilder()
+        message.add_field("Teleporting you to ", Colours.gold)
+        message.add_field(f"{self.recipient.username}.", Colours.blue)
+        self.creator.send_message(message)
+
+        message = MessageBuilder()
+        message.add_field("You are being teleported to by ", Colours.gold)
+        message.add_field(f"{self.creator.username}.", Colours.blue)
+        self.recipient.send_message(message)
+
+        self.creator.teleport_to(self.recipient)
+
+    def notify_expired(self):
+        if not self.responded:
+            message = MessageBuilder()
+            message.add_field("Your TPA to ", Colours.gold)
+            message.add_field(f"{self.recipient.username} ", Colours.blue)
+            message.add_field("has expired.", Colours.gold)
+            self.creator.send_message(message)
+
+            message = MessageBuilder()
+            message.add_field("Your TPA from ", Colours.gold)
+            message.add_field(f"{self.creator.username} ", Colours.blue)
+            message.add_field("has expired.", Colours.gold)
+            self.recipient.send_message(message)
+
+    @property
+    def expired(self) -> bool:
+        return (time.time() - self.created_at) >= 6 or self.responded
 
 
 class ChainmailEssentials(ChainmailPlugin):
@@ -19,6 +80,13 @@ class ChainmailEssentials(ChainmailPlugin):
         self.needs_update = False
         self.new_version = ""
         self.check_for_update()
+
+        self.pending_tpas = []  # type: List[PendingTPA]
+
+        self.eval_usage_message = MessageBuilder()
+        self.eval_usage_message.add_field("Usage: ", colour=Colours.red, bold=True)
+        self.eval_usage_message.add_field("!exec <code>", colour=Colours.gold)
+
         self.update_message = MessageBuilder()
         self.update_message.add_field("A new version of ", Colours.gold)
         self.update_message.add_field("Chainmail Essentials ", Colours.blue)
@@ -27,26 +95,53 @@ class ChainmailEssentials(ChainmailPlugin):
         self.update_message.add_field("Newest version is ", Colours.gold)
         self.update_message.add_field(f"{self.new_version}.", Colours.blue)
 
-        self.commands = self.wrapper.CommandRegistry.register_command("!commands", "^!commands$", "Lists commands accessible to a user.", self.command_commands)
-        self.plugins = self.wrapper.CommandRegistry.register_command("!plugins", "^!plugins$", "Lists all loaded plugins.", self.command_plugins)
-
-        self.eval_usage_message = MessageBuilder()
-        self.eval_usage_message.add_field("Usage: ", colour=Colours.red, bold=True)
-        self.eval_usage_message.add_field("!exec <code>", colour=Colours.gold)
-
         self.eval = self.wrapper.CommandRegistry.register_command("!eval", "^!eval (.+)$", "Evaluates Python expressions.", self.command_eval, True)
         self.eval_usage = self.wrapper.CommandRegistry.register_command("!eval", "^!eval$", "Displays the usage message.", self.command_eval_usage, True)
-
+        self.commands = self.wrapper.CommandRegistry.register_command("!commands", "^!commands$", "Lists commands accessible to a user.", self.command_commands)
+        self.plugins = self.wrapper.CommandRegistry.register_command("!plugins", "^!plugins$", "Lists all loaded plugins.", self.command_plugins)
         self.reload = self.wrapper.CommandRegistry.register_command("!reload", "^!reload$", "Reloads all plugins.", self.command_reload, True)
+        self.tpa = self.wrapper.CommandRegistry.register_command("!tpa", "^!tpa ([\\w\\d_]+)$", "Requests to teleport to another user.", self.command_tpa)
 
         self.wrapper.EventManager.register_handler(Events.PLAYER_CONNECTED, self.handle_connection)
 
+    def remove_expired_tpas_thread(self):
+        while self.wrapper.wrapper_running and self.enabled:
+            for tpa in self.pending_tpas:
+                if tpa.expired:
+                    tpa.notify_expired()
+                    self.pending_tpas.remove(tpa)
+            time.sleep(5)
+
     @staticmethod
     def get_item_from_list(parent_list: List[t], item_index: int, default: t) -> t:
+        """
+        Returns an item for the list, or the default if the item does not exist.
+        :param parent_list: The list to get the item from
+        :param item_index: The index of the item to get
+        :param default: The default item to return if the specified item could not be found
+        :return: The item
+        """
         try:
             return parent_list[item_index]
         except KeyError:
             return default
+
+    def get_tpa(self, creator: Player=None, recipient: Player=None) -> Optional[PendingTPA]:
+        """
+        Gets a pending tpa for a specified creator or recipient
+        :param creator: The creator of the tpa
+        :param recipient: The recipient of the tpa
+        :return: The tpa
+        """
+        if creator is not None:
+            for tpa in self.pending_tpas:
+                if tpa.creator == creator:
+                    return tpa
+        if recipient is not None:
+            for tpa in self.pending_tpas:
+                if tpa.recipient == recipient:
+                    return tpa
+        return None
 
     def check_for_update(self):
         self.logger.info("Checking for update...")
@@ -64,8 +159,10 @@ class ChainmailEssentials(ChainmailPlugin):
         except requests.HTTPError:
             self.logger.warning("Failed to check for update.")
 
+    # noinspection PyMethodMayBeStatic
     def command_eval(self, event: CommandSentEvent):
         code = event.args[0]
+        # noinspection PyBroadException
         try:
             result = str(eval(code))
             error = False
@@ -120,6 +217,29 @@ class ChainmailEssentials(ChainmailPlugin):
         builder.add_field("Plugins reloaded.", Colours.green)
         event.player.send_message(builder)
 
+    def command_tpa(self, event: CommandSentEvent):
+        recipient = self.wrapper.PlayerManager.get_player(event.args[0])
+        if recipient is None:
+            builder = MessageBuilder()
+            builder.add_field("A player with that username was not found.", Colours.red)
+            event.player.send_message(builder)
+            return
+        if self.get_tpa(creator=event.player) is not None:
+            builder = MessageBuilder()
+            builder.add_field("You already have an active outgoing TPA request.", Colours.red)
+            event.player.send_message(builder)
+            return
+        if self.get_tpa(recipient=recipient) is not None:
+            builder = MessageBuilder()
+            builder.add_field("The other player already has a pending TPA request.", Colours.red)
+            event.player.send_message(builder)
+            return
+        self.pending_tpas.append(PendingTPA(event.player, recipient))
+
     def handle_connection(self, event: PlayerConnectedEvent):
         if event.player.is_op and self.needs_update:
             event.player.send_message(self.update_message)
+
+    def enable(self) -> None:
+        super().enable()
+        threading.Thread(target=self.remove_expired_tpas_thread).start()
