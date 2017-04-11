@@ -67,9 +67,19 @@ class PendingTPA(object):
             message.add_field("has expired.", Colours.gold)
             self.recipient.send_message(message)
 
+    def notify_denied(self):
+        message = MessageBuilder()
+        message.add_field(f"{self.recipient.username} ", Colours.blue)
+        message.add_field("has declined your teleport request.", Colours.gold)
+        self.creator.send_message(message)
+
+        message = MessageBuilder()
+        message.add_field("Request denied.", Colours.red)
+        self.recipient.send_message(message)
+
     @property
     def expired(self) -> bool:
-        return (time.time() - self.created_at) >= 6 or self.responded
+        return (time.time() - self.created_at) >= 60 or self.responded
 
 
 class ChainmailEssentials(ChainmailPlugin):
@@ -101,6 +111,8 @@ class ChainmailEssentials(ChainmailPlugin):
         self.plugins = self.wrapper.CommandRegistry.register_command("!plugins", "^!plugins$", "Lists all loaded plugins.", self.command_plugins)
         self.reload = self.wrapper.CommandRegistry.register_command("!reload", "^!reload$", "Reloads all plugins.", self.command_reload, True)
         self.tpa = self.wrapper.CommandRegistry.register_command("!tpa", "^!tpa ([\\w\\d_]+)$", "Requests to teleport to another user.", self.command_tpa)
+        self.tpaccept = self.wrapper.CommandRegistry.register_command("!tpaccept", "^!tpaccept$", "Accepts a teleport request.", self.command_tpaccept)
+        self.tpdeny = self.wrapper.CommandRegistry.register_command("!tpdeny", "^!tpdeny$", "Denies a teleport request.", self.command_tpdeny)
 
         self.wrapper.EventManager.register_handler(Events.PLAYER_CONNECTED, self.handle_connection)
 
@@ -235,6 +247,26 @@ class ChainmailEssentials(ChainmailPlugin):
             event.player.send_message(builder)
             return
         self.pending_tpas.append(PendingTPA(event.player, recipient))
+
+    def command_tpaccept(self, event: CommandSentEvent):
+        tpa = self.get_tpa(recipient=event.player)
+        if tpa is None:
+            builder = MessageBuilder()
+            builder.add_field("You do not have a pending TPA.", Colours.red)
+            event.player.send_message(builder)
+            return
+        tpa.responded = True
+        tpa.do_teleport()
+
+    def command_tpdeny(self, event: CommandSentEvent):
+        tpa = self.get_tpa(recipient=event.player)
+        if tpa is None:
+            builder = MessageBuilder()
+            builder.add_field("You do not have a pending TPA.", Colours.red)
+            event.player.send_message(builder)
+            return
+        tpa.responded = True
+        tpa.notify_denied()
 
     def handle_connection(self, event: PlayerConnectedEvent):
         if event.player.is_op and self.needs_update:
