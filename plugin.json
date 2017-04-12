@@ -2,5 +2,6 @@
   "name": "Chainmail Essentials",
   "developer": "nint8835",
   "version": "1.6.0",
-  "main_class": "ChainmailEssentials"
+  "main_class": "ChainmailEssentials",
+  "remote_manifest": "https://raw.githubusercontent.com/Chainmail-Project/ChainmailEssentials/master/plugin.json"
 }

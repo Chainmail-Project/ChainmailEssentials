@@ -1,6 +1,5 @@
 import threading
 import traceback
-# noinspection PyPackageRequirements
 import requests
 import time
 from typing import TypeVar, List, Optional
@@ -86,10 +85,7 @@ class ChainmailEssentials(ChainmailPlugin):
     def __init__(self, manifest: dict, wrapper: "Wrapper.Wrapper") -> None:
         super().__init__(manifest, wrapper)
 
-        self.remote_manifest_path = "https://raw.githubusercontent.com/Chainmail-Project/ChainmailEssentials/master/plugin.json"
-        self.needs_update = False
-        self.new_version = ""
-        self.check_for_update()
+        self.needs_update = self.new_version_available
 
         self.pending_tpas = []  # type: List[PendingTPA]
 
@@ -100,10 +96,7 @@ class ChainmailEssentials(ChainmailPlugin):
         self.update_message = MessageBuilder()
         self.update_message.add_field("A new version of ", Colours.gold)
         self.update_message.add_field("Chainmail Essentials ", Colours.blue)
-        self.update_message.add_field("is available.\nYou are running version ", Colours.gold)
-        self.update_message.add_field(f"{self.manifest['version']}. ", Colours.blue)
-        self.update_message.add_field("Newest version is ", Colours.gold)
-        self.update_message.add_field(f"{self.new_version}.", Colours.blue)
+        self.update_message.add_field("is available.", Colours.gold)
 
         self.eval = self.wrapper.CommandRegistry.register_command("!eval", "^!eval (.+)$", "Evaluates Python expressions.", self.command_eval, True)
         self.eval_usage = self.wrapper.CommandRegistry.register_command("!eval", "^!eval$", "Displays the usage message.", self.command_eval_usage, True)
@@ -125,20 +118,6 @@ class ChainmailEssentials(ChainmailPlugin):
                     self.pending_tpas.remove(tpa)
             time.sleep(5)
 
-    @staticmethod
-    def get_item_from_list(parent_list: List[t], item_index: int, default: t) -> t:
-        """
-        Returns an item for the list, or the default if the item does not exist.
-        :param parent_list: The list to get the item from
-        :param item_index: The index of the item to get
-        :param default: The default item to return if the specified item could not be found
-        :return: The item
-        """
-        try:
-            return parent_list[item_index]
-        except KeyError:
-            return default
-
     def get_tpa(self, creator: Player=None, recipient: Player=None) -> Optional[PendingTPA]:
         """
         Gets a pending tpa for a specified creator or recipient
@@ -155,22 +134,6 @@ class ChainmailEssentials(ChainmailPlugin):
                 if tpa.recipient == recipient:
                     return tpa
         return None
-
-    def check_for_update(self):
-        self.logger.info("Checking for update...")
-        try:
-            manifest = requests.get(self.remote_manifest_path).json()
-            version_remote = manifest["version"].split(".")
-            version_local = self.manifest["version"].split(".")
-            for i in range(len(version_local)):
-                if int(version_local[i]) < int(self.get_item_from_list(version_remote, i, "0")):
-                    self.needs_update = True
-                    self.logger.info(f"An update is available. Current version is v{self.manifest['version']}, updated version is v{manifest['version']}.")
-                    self.new_version = manifest["version"]
-                    return
-            self.logger.info("No update required.")
-        except requests.HTTPError:
-            self.logger.warning("Failed to check for update.")
 
     # noinspection PyMethodMayBeStatic
     def command_eval(self, event: CommandSentEvent):
