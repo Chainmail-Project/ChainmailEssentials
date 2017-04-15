@@ -106,7 +106,7 @@ class ChainmailEssentials(ChainmailPlugin):
         self.tpa = self.wrapper.CommandRegistry.register_command("!tpa", "^!tpa ([\\w\\d_]+)$", "Requests to teleport to another user.", self.command_tpa)
         self.tpaccept = self.wrapper.CommandRegistry.register_command("!tpaccept", "^!tpaccept$", "Accepts a teleport request.", self.command_tpaccept)
         self.tpdeny = self.wrapper.CommandRegistry.register_command("!tpdeny", "^!tpdeny$", "Denies a teleport request.", self.command_tpdeny)
-        self.info = self.wrapper.CommandRegistry.register_command("!version", "^!info$", "Gets various info about the server.", self.command_info, True)
+        self.info = self.wrapper.CommandRegistry.register_command("!info", "^!info$", "Gets various info about the server.", self.command_info, True)
 
         self.wrapper.EventManager.register_handler(Events.PLAYER_CONNECTED, self.handle_connection)
 
@@ -238,7 +238,7 @@ class ChainmailEssentials(ChainmailPlugin):
         builder.add_field(f"{self.wrapper.version}\n", Colours.blue)
         builder.add_field("OPs: ", Colours.gold)
         builder.add_field(f"{len(self.wrapper.ops)}", Colours.blue)
-        event.player.send_message(event)
+        event.player.send_message(builder)
 
     def handle_connection(self, event: PlayerConnectedEvent):
         if event.player.is_op and self.needs_update:
