@@ -4,6 +4,7 @@ import requests
 import time
 from typing import TypeVar, List, Optional
 
+from Chainmail import Wrapper
 from Chainmail.Player import Player
 from Chainmail.Events import CommandSentEvent, PlayerConnectedEvent, Events
 from Chainmail.MessageBuilder import MessageBuilder, Colours
