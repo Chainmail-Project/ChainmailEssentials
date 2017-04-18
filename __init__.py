@@ -1,15 +1,15 @@
+import builtins
 import threading
-import traceback
-import requests
 import time
-from typing import TypeVar, List, Optional
+import traceback
+from typing import TypeVar, List, Optional, Match
 
 from Chainmail import Wrapper
-from Chainmail.Player import Player
 from Chainmail.Events import CommandSentEvent, PlayerConnectedEvent, Events
 from Chainmail.MessageBuilder import MessageBuilder, Colours
+from Chainmail.Player import Player
 from Chainmail.Plugin import ChainmailPlugin
-
+from plugins.ChainmailRCON import ChainmailRCON, RCONClientHandler
 
 t = TypeVar("t")
 
@@ -86,6 +86,8 @@ class ChainmailEssentials(ChainmailPlugin):
     def __init__(self, manifest: dict, wrapper: "Wrapper.Wrapper") -> None:
         super().__init__(manifest, wrapper)
 
+        self.rcon = getattr(builtins, "RCON")  # type: ChainmailRCON
+
         self.needs_update = self.new_version_available
 
         self.pending_tpas = []  # type: List[PendingTPA]
@@ -108,6 +110,8 @@ class ChainmailEssentials(ChainmailPlugin):
         self.tpaccept = self.wrapper.CommandRegistry.register_command("!tpaccept", "^!tpaccept$", "Accepts a teleport request.", self.command_tpaccept)
         self.tpdeny = self.wrapper.CommandRegistry.register_command("!tpdeny", "^!tpdeny$", "Denies a teleport request.", self.command_tpdeny)
         self.info = self.wrapper.CommandRegistry.register_command("!info", "^!info$", "Gets various info about the server.", self.command_info, True)
+
+        self.rcon.register_command("/commands", "^/commands$", "Lists the commands you have access to.", self.rconcommand_commands)
 
         self.wrapper.EventManager.register_handler(Events.PLAYER_CONNECTED, self.handle_connection)
 
@@ -167,6 +171,15 @@ class ChainmailEssentials(ChainmailPlugin):
                 suffix = "\n" if command != commands[-1] and command.name != commands[-1].name else ""
                 builder.add_field(f"{command.description}{suffix}", Colours.gold)
         event.player.send_message(builder)
+
+    def rconcommand_commands(self, matches: List[Match[str]], client: RCONClientHandler):
+        components = []
+        seen = []
+        for command in self.rcon.commands:
+            if command["name"] not in seen and (client.authed or not command["requires_auth"]):
+                seen.append(command["name"])
+                components.append(f"{command['name']}: {command['description']}")
+        client.writeline("\n".join(components))
 
     def command_plugins(self, event: CommandSentEvent):
         plugins = self.wrapper.plugin_manager.get_all_plugins()
