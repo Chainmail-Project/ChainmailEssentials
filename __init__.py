@@ -182,11 +182,11 @@ class ChainmailEssentials(ChainmailPlugin):
         client.writeline("\n".join(components))
 
     def command_plugins(self, event: CommandSentEvent):
-        plugins = self.wrapper.plugin_manager.get_all_plugins()
+        plugins = self.wrapper.PluginManager.get_all_plugins()
         builder = MessageBuilder()
 
         for plugin in plugins:
-            if self.wrapper.plugin_manager.get_plugin_loaded(plugin["manifest"]["name"]):
+            if self.wrapper.PluginManager.get_plugin_loaded(plugin["manifest"]["name"]):
                 builder.add_field(f"{plugin['manifest']['name']}\n", Colours.blue)
                 builder.add_field("    Developer: ", Colours.red)
                 builder.add_field(f"{plugin['manifest']['developer']}\n", Colours.blue)

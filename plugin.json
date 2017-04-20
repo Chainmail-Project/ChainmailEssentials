@@ -1,7 +1,7 @@
 {
   "name": "Chainmail Essentials",
   "developer": "nint8835",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "main_class": "ChainmailEssentials",
   "remote_manifest": "https://raw.githubusercontent.com/Chainmail-Project/ChainmailEssentials/master/plugin.json",
   "dependencies": ["Chainmail RCON"]
